@@ -3,9 +3,11 @@
 import cv2
 import mediapipe as mp
 import numpy as np
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING, Any
 from collections import defaultdict
-from scipy.signal import savgol_filter
+
+if TYPE_CHECKING:
+    from scipy.signal import savgol_filter
 
 from .config import AnalysisConfig
 from .models import PoseLandmarks, Keypoint, PersonTrack
@@ -85,7 +87,7 @@ class PoseDetector:
 
         return poses
 
-    def _convert_landmarks(self, mp_landmarks) -> PoseLandmarks:
+    def _convert_landmarks(self, mp_landmarks: Any) -> PoseLandmarks:
         """Convert MediaPipe landmarks to our format."""
         keypoints = {}
         visibility_sum = 0
@@ -113,7 +115,7 @@ class PoseDetector:
             keypoints=keypoints, confidence=visibility_sum / keypoint_count, bbox=bbox
         )
 
-    def update_tracking(self, poses: List[PoseLandmarks], frame_idx: int):
+    def update_tracking(self, poses: List[PoseLandmarks], frame_idx: int) -> None:
         """Update person tracking with current frame poses."""
         if not poses:
             return
@@ -179,7 +181,7 @@ class PoseDetector:
 
         return total_distance / count if count > 0 else float("inf")
 
-    def _update_track_statistics(self):
+    def _update_track_statistics(self) -> None:
         """Update track statistics like confidence and persistence."""
         total_frames = (
             max(len(track.frame_indices) for track in self.tracks.values())
@@ -216,7 +218,7 @@ class PoseDetector:
 
         return None, None
 
-    def apply_temporal_smoothing(self):
+    def apply_temporal_smoothing(self) -> None:
         """Apply temporal smoothing to all tracked poses."""
         if not self.config.use_temporal_smoothing or len(self.frame_history) < 3:
             return
@@ -290,7 +292,7 @@ class PoseDetector:
             keypoints=smoothed_keypoints, confidence=pose.confidence, bbox=pose.bbox
         )
 
-    def close(self):
+    def close(self) -> None:
         """Release MediaPipe resources."""
         if hasattr(self, "pose"):
             self.pose.close()

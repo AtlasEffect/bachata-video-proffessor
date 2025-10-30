@@ -104,7 +104,7 @@ Examples:
     return parser
 
 
-def main():
+def main() -> None:
     """Main CLI entry point."""
     parser = create_parser()
     args = parser.parse_args()

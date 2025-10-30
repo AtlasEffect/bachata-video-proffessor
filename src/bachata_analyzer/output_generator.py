@@ -4,7 +4,7 @@ import json
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import mediapipe as mp
 
 from .config import AnalysisConfig
@@ -21,7 +21,7 @@ class OutputGenerator:
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
 
-    def save_json(self, result: AnalysisResult, output_path: Path):
+    def save_json(self, result: AnalysisResult, output_path: Path) -> None:
         """Save analysis results as JSON."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -59,7 +59,7 @@ class OutputGenerator:
         with open(output_path, "w") as f:
             json.dump(result_dict, f, indent=2)
 
-    def save_text_summary(self, result: AnalysisResult, output_path: Path):
+    def save_text_summary(self, result: AnalysisResult, output_path: Path) -> None:
         """Save human-readable text summary."""
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -164,7 +164,7 @@ class OutputGenerator:
             frame_interval = max(1, int(fps / result.fps))
 
             # Create video writer
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # type: ignore[attr-defined]
             out = cv2.VideoWriter(str(output_path), fourcc, result.fps, (width, height))
 
             # Get primary couple track IDs
@@ -261,8 +261,8 @@ class OutputGenerator:
         return annotated_frame
 
     def _draw_pose(
-        self, frame: np.ndarray, pose: PoseLandmarks, color: tuple, label: str
-    ):
+        self, frame: np.ndarray, pose: PoseLandmarks, color: Tuple[int, int, int], label: str
+    ) -> None:
         """Draw a single pose skeleton on the frame."""
         if not pose.keypoints:
             return

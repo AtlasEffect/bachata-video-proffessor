@@ -2,7 +2,7 @@
 
 import cv2
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import uuid
 from urllib.parse import urlparse
 
@@ -148,7 +148,7 @@ class BachataAnalyzer:
         video_path: str,
         output_dir: Path,
         tracks: Dict[int, PersonTrack],
-    ):
+    ) -> None:
         """Generate all output files."""
         # JSON output
         json_path = output_dir / "segments.json"
@@ -171,13 +171,13 @@ class BachataAnalyzer:
             else:
                 print("Failed to create annotated video")
 
-    def __enter__(self):
+    def __enter__(self) -> "BachataAnalyzer":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.cleanup()
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Clean up resources."""
         self.video_processor.release()
         self.pose_detector.close()

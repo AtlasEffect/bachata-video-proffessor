@@ -3,7 +3,7 @@
 import cv2
 import numpy as np
 from pathlib import Path
-from typing import Generator, Tuple, Optional
+from typing import Generator, Tuple, Optional, Any
 import yt_dlp
 from tqdm import tqdm
 
@@ -16,10 +16,10 @@ class VideoProcessor:
     def __init__(self, config: AnalysisConfig) -> None:
         self.config = config
         self.cap: Optional[cv2.VideoCapture] = None
-        self.fps: Optional[float] = None
-        self.total_frames: Optional[int] = None
-        self.width: Optional[int] = None
-        self.height: Optional[int] = None
+        self.fps: float = 30.0  # Default fallback
+        self.total_frames: int = 0
+        self.width: int = 1920  # Default fallback
+        self.height: int = 1080  # Default fallback
 
     def load_video(self, video_path: str) -> bool:
         """Load video from file path or YouTube URL."""
@@ -30,10 +30,10 @@ class VideoProcessor:
         if not self.cap.isOpened():
             raise ValueError(f"Could not open video: {video_path}")
 
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30.0
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 1920)
+        self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 1080)
 
         return True
 
@@ -49,9 +49,10 @@ class VideoProcessor:
             "no_warnings": True,
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore[arg-type]
             info = ydl.extract_info(url, download=True)
-            return ydl.prepare_filename(info)
+            filename = ydl.prepare_filename(info)
+            return str(filename)  # Ensure we return str
 
     def get_frame_generator(self) -> Generator[Tuple[int, np.ndarray], None, None]:
         """Generate frames at the target FPS."""
@@ -94,22 +95,24 @@ class VideoProcessor:
         """Get video duration in seconds."""
         if self.cap is None:
             raise ValueError("Video not loaded")
+        if self.fps == 0:
+            return 0.0
         return self.total_frames / self.fps
 
     def get_frame_timestamp(self, frame_idx: int) -> float:
         """Get timestamp for a given frame index."""
-        if self.fps is None:
+        if self.fps == 0:
             raise ValueError("Video not loaded")
         return frame_idx / self.config.fps
 
-    def release(self):
+    def release(self) -> None:
         """Release video capture resources."""
         if self.cap:
             self.cap.release()
             self.cap = None
 
-    def __enter__(self):
+    def __enter__(self) -> "VideoProcessor":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self.release()

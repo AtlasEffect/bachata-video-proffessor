@@ -1,23 +1,25 @@
 """Dance segmentation and feature extraction."""
 
 import numpy as np
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, TYPE_CHECKING
 from scipy.signal import find_peaks
 from scipy.stats import zscore
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
+
+if TYPE_CHECKING:
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.cluster import KMeans
 
 from .config import AnalysisConfig
-from .models import PersonTrack, DanceSegment, SegmentFeatures
+from .models import PersonTrack, DanceSegment, SegmentFeatures, PoseLandmarks, Keypoint
 
 
 class DanceSegmenter:
     """Segments dance video into individual combinations."""
 
-    def __init__(self, config: AnalysisConfig):
+    def __init__(self, config: AnalysisConfig) -> None:
         self.config = config
-        self.features = []
-        self.segments = []
+        self.features: np.ndarray = np.array([])
+        self.segments: List[DanceSegment] = []
 
     def extract_features(self, tracks: Dict[int, PersonTrack], fps: int) -> np.ndarray:
         """Extract motion features for segmentation."""
@@ -41,7 +43,7 @@ class DanceSegmenter:
             )
 
             frame_features = self._extract_frame_features(
-                leader_pose, follower_pose, frame_idx, fps
+                leader_pose, follower_pose or PoseLandmarks(keypoints={}, confidence=0.0), frame_idx, fps
             )
             features.append(frame_features)
 
@@ -49,7 +51,7 @@ class DanceSegmenter:
         return self.features
 
     def _extract_frame_features(
-        self, leader_pose, follower_pose, frame_idx: int, fps: int
+        self, leader_pose: PoseLandmarks, follower_pose: PoseLandmarks, frame_idx: int, fps: int
     ) -> List[float]:
         """Extract features for a single frame."""
         features = []
@@ -101,7 +103,7 @@ class DanceSegmenter:
 
         return features
 
-    def _calculate_velocity(self, pose, frame_idx: int) -> float:
+    def _calculate_velocity(self, pose: PoseLandmarks, frame_idx: int) -> float:
         """Calculate overall movement velocity."""
         if frame_idx == 0 or not hasattr(self, "_prev_keypoints"):
             self._prev_keypoints = pose.keypoints
@@ -122,7 +124,7 @@ class DanceSegmenter:
         self._prev_keypoints = pose.keypoints
         return total_distance / count if count > 0 else 0.0
 
-    def _calculate_torso_rotation(self, pose) -> float:
+    def _calculate_torso_rotation(self, pose: PoseLandmarks) -> float:
         """Calculate torso rotation angle."""
         try:
             left_shoulder = pose.keypoints["left_shoulder"]
@@ -146,7 +148,7 @@ class DanceSegmenter:
         except KeyError:
             return 0.0
 
-    def _calculate_hand_distance(self, leader_pose, follower_pose) -> float:
+    def _calculate_hand_distance(self, leader_pose: PoseLandmarks, follower_pose: PoseLandmarks) -> float:
         """Calculate distance between partners' hands."""
         try:
             # Use right hand of leader and left hand of follower (typical dance hold)
@@ -161,7 +163,7 @@ class DanceSegmenter:
         except KeyError:
             return 0.0
 
-    def _calculate_step_cadence(self, pose) -> float:
+    def _calculate_step_cadence(self, pose: PoseLandmarks) -> float:
         """Calculate leg movement cadence."""
         try:
             left_ankle = pose.keypoints["left_ankle"]
@@ -187,7 +189,7 @@ class DanceSegmenter:
         except KeyError:
             return 0.0
 
-    def _calculate_joint_angle(self, left_hip, left_knee, left_ankle) -> float:
+    def _calculate_joint_angle(self, left_hip: Keypoint, left_knee: Keypoint, left_ankle: Keypoint) -> float:
         """Calculate angle at knee joint."""
         # Vector from knee to hip
         v1 = np.array([left_hip.x - left_knee.x, left_hip.y - left_knee.y])
@@ -198,7 +200,7 @@ class DanceSegmenter:
         angle = np.arccos(np.clip(cos_angle, -1, 1))
         return float(angle)
 
-    def _calculate_vertical_movement(self, pose) -> float:
+    def _calculate_vertical_movement(self, pose: PoseLandmarks) -> float:
         """Calculate vertical movement (y-axis changes)."""
         try:
             # Use hip center as reference point
@@ -217,7 +219,7 @@ class DanceSegmenter:
         except KeyError:
             return 0.0
 
-    def _calculate_arm_spread(self, pose) -> float:
+    def _calculate_arm_spread(self, pose: PoseLandmarks) -> float:
         """Calculate distance between hands."""
         try:
             left_wrist = pose.keypoints["left_wrist"]
@@ -231,7 +233,7 @@ class DanceSegmenter:
         except KeyError:
             return 0.0
 
-    def _calculate_hip_movement(self, pose) -> float:
+    def _calculate_hip_movement(self, pose: PoseLandmarks) -> float:
         """Calculate hip movement."""
         try:
             left_hip = pose.keypoints["left_hip"]
@@ -262,7 +264,7 @@ class DanceSegmenter:
         except KeyError:
             return 0.0
 
-    def _detect_turn(self, pose, frame_idx: int) -> float:
+    def _detect_turn(self, pose: PoseLandmarks, frame_idx: int) -> float:
         """Detect if person is turning."""
         try:
             if frame_idx == 0 or not hasattr(self, "_prev_shoulder_angle"):
@@ -291,7 +293,7 @@ class DanceSegmenter:
         except KeyError:
             return 0.0
 
-    def _detect_dip(self, pose, frame_idx: int) -> float:
+    def _detect_dip(self, pose: PoseLandmarks, frame_idx: int) -> float:
         """Detect if person is performing a dip."""
         try:
             # Check for significant vertical drop
@@ -305,7 +307,7 @@ class DanceSegmenter:
         except:
             return 0.0
 
-    def _detect_freeze(self, pose, frame_idx: int) -> float:
+    def _detect_freeze(self, pose: PoseLandmarks, frame_idx: int) -> float:
         """Detect if person is frozen/paused."""
         velocity = self._calculate_velocity(pose, frame_idx)
         return 1.0 if velocity < self.config.pause_threshold else 0.0
@@ -316,6 +318,7 @@ class DanceSegmenter:
             return []
 
         # Normalize features
+        from sklearn.preprocessing import StandardScaler
         scaler = StandardScaler()
         features_normalized = scaler.fit_transform(self.features)
 
@@ -456,16 +459,19 @@ class DanceSegmenter:
 
         # Leaders typically initiate movements and have more controlled motion
         total_velocity = 0.0
-        total_turns = 0
+        total_turns = 0.0
         total_frames = len(track.landmarks_history)
+
+        # Create a temporary segmenter for calculations
+        temp_segmenter = DanceSegmenter(self.config)
 
         for i, pose in enumerate(track.landmarks_history):
             # Velocity contributes to leadership (initiating movement)
-            velocity = self._calculate_velocity(pose, i)
+            velocity = temp_segmenter._calculate_velocity(pose, i)
             total_velocity += velocity
 
             # Turns also indicate leadership
-            turn_indicator = self._detect_turn(pose, i)
+            turn_indicator = temp_segmenter._detect_turn(pose, i)
             total_turns += turn_indicator
 
         # Leadership score combines velocity and turn initiation
